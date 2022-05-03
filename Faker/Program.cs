@@ -5,129 +5,83 @@ using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Linq;
 using Npgsql;
+using CommandLine;
+using System.Reflection;
 
-namespace Faker
+namespace DrxFaker
 {
-    public class Person
-    {
-        public int Id { get; set; }
-        public Guid Discriminator = Guid.Parse("f5509cdc-ac0c-4507-a4d3-61d7a0a9b6f6");
-        public string Status = "Active";
-        public string Phone { get; set; }
-        public int Code { get; set; }
-        public string Lastname { get; set; }
-        public string Firstname { get; set; }
-        public string Name { get; set; }
-        public DateTime Dateofbirth { get; set; }
-        public Name.Gender Sex { get; set; }
-        public string Shortname { get; set; }
-        public string Login { get; set; }
-        public string Email { get; set; }
-    }
-
-    public class Login
-    {
-        public int Id { get; set; }
-        public Guid Discriminator = Guid.Parse("55f542e9-4645-4f8d-999e-73cc71df62fd");
-        public string Status = "Active";
-        public string TypeAuthentication = "Windows";
-        public string LoginName { get; set; }
-    }
-
-    public class BusinessUnit
-    {
-        public int Id { get; set; }
-        public string Sid { get; set; }
-        public Guid Discriminator = Guid.Parse("eff95720-181f-4f7d-892d-dec034c7b2ab");
-        public string Status = "Active";
-        public string Name { get; set; }
-        public string LegalName { get; set; }
-        public int Code { get; set; }
-        public string Phone { get; set; }
-        public string TIN { get; set; } //max 50
-        public string TRRC { get; set; } //max 50
-        public string PSRN { get; set; } //max 50
-    }
-
-    public class Department
-    {
-        public int Id { get; set; }
-        public string Sid { get; set; }
-        public Guid Discriminator = Guid.Parse("61b1c19f-26e2-49a5-b3d3-0d3618151e12");
-        public string Status = "Active";
-        public string Name { get; set; }
-        public int Code { get; set; }
-        public int BusinessUnitId { get; set; }
-        public string Phone { get; set; }
-    }
-
-    public class Employee
-    {
-        public int Id { get; set; }
-        public string Sid { get; set; }
-        public Guid Discriminator = Guid.Parse("b7905516-2be5-4931-961c-cb38d5677565");
-        public string Status = "Active";
-        public string Name { get; set; }
-        public int PersonId { get; set; }
-        public int LoginId { get; set; }
-        public int DepartmentId { get; set; }
-        public int TabNumber { get; set; }
-        public string Email { get; set; }
-    }
-
     class Program
     {
         static string postgresConnStr = "Server=192.168.3.237;Port=5432;Database=directum;Uid=directum;Pwd=1Qwerty";
         static string msConnStr = "Server=192.168.3.237;Initial Catalog=directum;User Id=directum;Password=1Qwerty";
         static string connectionString;
 
-        static void Main(string[] args)
+        static void Main()
         {
-            Console.WriteLine("Enter the type of database (Postgres - p, or MS - m)");
-            var sqlType = Console.ReadLine();
-
-
-
-            var employeesCount = 5;
-            var businessCount = 2;
-            var departmentsCount = 3;
-
-            try
+            bool keepLooping = true;
+            while (keepLooping)
             {
-                var persons = GeneratePersons(employeesCount);
-                if (persons == null)
-                {
-                    Console.WriteLine("Error while creating Persons");
-                    return;
-                }
+                var args = Console.ReadLine().Split();
+                var parser = Parser.Default.ParseArguments<Options>(args)
+                    .WithParsed(RunOptions)
+                    .WithNotParsed(HandleParseError);
 
-                var loginsIds = GenerateLogins(employeesCount, persons);
-                if (loginsIds == null)
-                {
-                    Console.WriteLine("Error while creating Logins");
-                    return;
-                }
-
-                var businesUnitsIds = GenerateBusinessUnits(businessCount);
-                if (businesUnitsIds == null)
-                {
-                    Console.WriteLine("Error while creating Business Units");
-                    return;
-                }
-
-                var departmentsIds = GenerateDepartments(departmentsCount, businesUnitsIds);
-                if (departmentsIds == null)
-                {
-                    Console.WriteLine("Error while creating Departments");
-                    return;
-                }
-
-                GenerateEmployees(employeesCount, persons, loginsIds, departmentsIds);
+                if (Console.ReadKey().Key == ConsoleKey.Escape)
+                    keepLooping = false;
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"\nError: {ex.Message}");
-            }
+
+            //var employeesCount = 5;
+            //var businessCount = 2;
+            //var departmentsCount = 3;
+
+            //try
+            //{
+            //    var persons = GeneratePersons(employeesCount);
+            //    if (persons == null)
+            //    {
+            //        Console.WriteLine("Error while creating Persons");
+            //        return;
+            //    }
+
+            //    var loginsIds = GenerateLogins(employeesCount, persons);
+            //    if (loginsIds == null)
+            //    {
+            //        Console.WriteLine("Error while creating Logins");
+            //        return;
+            //    }
+
+            //    var businesUnitsIds = GenerateBusinessUnits(businessCount);
+            //    if (businesUnitsIds == null)
+            //    {
+            //        Console.WriteLine("Error while creating Business Units");
+            //        return;
+            //    }
+
+            //    var departmentsIds = GenerateDepartments(departmentsCount, businesUnitsIds);
+            //    if (departmentsIds == null)
+            //    {
+            //        Console.WriteLine("Error while creating Departments");
+            //        return;
+            //    }
+
+            //    GenerateEmployees(employeesCount, persons, loginsIds, departmentsIds);
+            //}
+            //catch (Exception ex)
+            //{
+            //    Console.WriteLine($"\nError: {ex.Message}");
+            //}
+        }
+
+        static void RunOptions(Options opts)
+        {
+            var types = opts.GetType().GetProperties();
+            foreach (var type in types)
+                Console.WriteLine(type.GetValue(opts));
+        }
+
+        static void HandleParseError(IEnumerable<Error> errs)
+        {
+            //Console.WriteLine("Enter all required attributes.");
         }
 
         #region Создание записей
@@ -233,7 +187,7 @@ namespace Faker
             var businessUnits = newBusinessUnit.Generate(count);
 
             foreach (var businessUnit in businessUnits)
-                query += $"\n({businessUnit.Id}, '{businessUnit.Sid}', '{businessUnit.Discriminator}', '{businessUnit.Status}', '{businessUnit.Name}', " 
+                query += $"\n({businessUnit.Id}, '{businessUnit.Sid}', '{businessUnit.Discriminator}', '{businessUnit.Status}', '{businessUnit.Name}', "
                     + $"'{businessUnit.LegalName}', '{businessUnit.Code}', '{businessUnit.Phone}', '{businessUnit.TIN}', "
                     + $"'{businessUnit.TRRC}', '{businessUnit.PSRN}'),";
 
@@ -353,7 +307,7 @@ namespace Faker
 
                 result = true;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Console.WriteLine(ex);
                 result = false;
