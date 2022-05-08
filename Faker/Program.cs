@@ -7,88 +7,109 @@ using System.Linq;
 using Npgsql;
 using CommandLine;
 using System.Reflection;
+using System.Diagnostics;
 
 namespace DrxFaker
 {
     class Program
     {
-        static string postgresConnStr = "Server=192.168.3.237;Port=5432;Database=directum;Uid=directum;Pwd=1Qwerty";
-        static string msConnStr = "Server=192.168.3.237;Initial Catalog=directum;User Id=directum;Password=1Qwerty";
+        //postgresConnStr "Server=192.168.3.237;Port=5432;Database=directum;Uid=directum;Pwd=1Qwerty"
+        //msConnStr "Server=192.168.1.82;Initial Catalog=S_NESTLE_RX3523_Dev_MAA;User Id=sa;Password=1Qwerty"
+        //-t p -s "192.168.3.237" -d directum -u directum -p 1Qwerty --emp 1000 --bus 4 --dep 60
+
         static string connectionString;
+        enum sqlTypes { Postgres, MS };
+        static sqlTypes sqlType;
 
         static void Main()
         {
+            Parser.Default.ParseArguments<Options>(new List<string>() { "--help" });
+
             bool keepLooping = true;
             while (keepLooping)
             {
                 var args = Console.ReadLine().Split();
                 var parser = Parser.Default.ParseArguments<Options>(args)
-                    .WithParsed(RunOptions)
-                    .WithNotParsed(HandleParseError);
+                    .WithParsed(GenerationStart);
 
                 if (Console.ReadKey().Key == ConsoleKey.Escape)
                     keepLooping = false;
             }
-
-            //var employeesCount = 5;
-            //var businessCount = 2;
-            //var departmentsCount = 3;
-
-            //try
-            //{
-            //    var persons = GeneratePersons(employeesCount);
-            //    if (persons == null)
-            //    {
-            //        Console.WriteLine("Error while creating Persons");
-            //        return;
-            //    }
-
-            //    var loginsIds = GenerateLogins(employeesCount, persons);
-            //    if (loginsIds == null)
-            //    {
-            //        Console.WriteLine("Error while creating Logins");
-            //        return;
-            //    }
-
-            //    var businesUnitsIds = GenerateBusinessUnits(businessCount);
-            //    if (businesUnitsIds == null)
-            //    {
-            //        Console.WriteLine("Error while creating Business Units");
-            //        return;
-            //    }
-
-            //    var departmentsIds = GenerateDepartments(departmentsCount, businesUnitsIds);
-            //    if (departmentsIds == null)
-            //    {
-            //        Console.WriteLine("Error while creating Departments");
-            //        return;
-            //    }
-
-            //    GenerateEmployees(employeesCount, persons, loginsIds, departmentsIds);
-            //}
-            //catch (Exception ex)
-            //{
-            //    Console.WriteLine($"\nError: {ex.Message}");
-            //}
         }
 
-        static void RunOptions(Options opts)
+        /// <summary>
+        /// Запуск генерации оргструктуры
+        /// </summary>
+        /// <param name="opts">Параметры передаваемые пользователем</param>
+        static void GenerationStart(Options opts)
         {
             var types = opts.GetType().GetProperties();
             foreach (var type in types)
-                Console.WriteLine(type.GetValue(opts));
-        }
+            {
+                if (type.PropertyType == typeof(string))
+                    type.SetValue(opts, type.GetValue(opts).ToString().Trim('"'));
+                else if (type.PropertyType == typeof(int) && (int)type.GetValue(opts) < 1)
+                {
+                    Console.WriteLine($"Error: {type.Name} should be more than 0");
+                    return;
+                }
+            }
 
-        static void HandleParseError(IEnumerable<Error> errs)
-        {
-            //Console.WriteLine("Enter all required attributes.");
+            if (opts.SqlType != "p" && opts.SqlType != "m")
+            {
+                Console.WriteLine("Error: Wrong type of Sql");
+                return;
+            }
+
+            sqlType = opts.SqlType == "p" ? sqlTypes.Postgres : sqlTypes.MS;
+
+            connectionString = sqlType == sqlTypes.Postgres ?
+                $"Server={opts.Server};Port={opts.Port};Database={opts.Database};Uid={opts.UserId};Pwd={opts.Password}" :
+                $"Server={opts.Server};Initial Catalog={opts.Database};User Id={opts.UserId};Password={opts.Password}";
+
+            try
+            {
+                var persons = GeneratePersons(opts.EmployeesCount);
+                if (persons == null)
+                {
+                    Console.WriteLine("Error while creating Persons");
+                    return;
+                }
+
+                var loginsIds = GenerateLogins(opts.EmployeesCount, persons);
+                if (loginsIds == null)
+                {
+                    Console.WriteLine("Error while creating Logins");
+                    return;
+                }
+
+                var businesUnitsIds = GenerateBusinessUnits(opts.BusinessCount);
+                if (businesUnitsIds == null)
+                {
+                    Console.WriteLine("Error while creating Business Units");
+                    return;
+                }
+
+                var departmentsIds = GenerateDepartments(opts.DepartmentsCount, businesUnitsIds);
+                if (departmentsIds == null)
+                {
+                    Console.WriteLine("Error while creating Departments");
+                    return;
+                }
+
+                GenerateEmployees(opts.EmployeesCount, persons, loginsIds, departmentsIds);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"\nError: {ex.Message}");
+            }
         }
 
         #region Создание записей
         static List<Person> GeneratePersons(int count)
         {
             var tableName = "sungero_parties_counterparty";
-            int maxId = GetMaxId(tableName);
+            int maxId = GetNextId(tableName);
             if (maxId == 0)
                 return null;
 
@@ -104,8 +125,8 @@ namespace DrxFaker
             .RuleFor(u => u.Name, (f, u) => u.Lastname + " " + u.Firstname)
             .RuleFor(u => u.Dateofbirth, (f, u) => f.Date.Between(DateTime.Today.AddYears(-60), DateTime.Today.AddYears(-18)))
             .RuleFor(u => u.Shortname, (f, u) => u.Lastname + " " + u.Firstname.Substring(0, 1) + " ")
-            .RuleFor(u => u.Login, (f, u) => f.Internet.UserName(u.Firstname, u.Lastname))
-            .RuleFor(u => u.Email, (f, u) => f.Internet.Email(u.Firstname, u.Lastname));
+            .RuleFor(u => u.Login, (f, u) => f.Internet.UserName($"{u.Firstname}{u.Id}", u.Lastname))
+            .RuleFor(u => u.Email, (f, u) => f.Internet.Email($"{u.Firstname}{u.Id}", u.Lastname));
 
             var query = $"INSERT INTO {tableName}" +
             "(Id, discriminator, status, name, phones, code, lastname, firstname, dateofbirth, sex, shortname)" +
@@ -132,7 +153,7 @@ namespace DrxFaker
         static List<int> GenerateLogins(int count, List<Person> persons)
         {
             var tableName = "sungero_core_login";
-            int maxId = GetMaxId(tableName);
+            int maxId = GetNextId(tableName);
             if (maxId == 0)
                 return null;
 
@@ -164,7 +185,7 @@ namespace DrxFaker
         static List<int> GenerateBusinessUnits(int count)
         {
             var tableName = "sungero_core_recipient";
-            int maxId = GetMaxId(tableName);
+            int maxId = GetNextId(tableName);
             if (maxId == 0)
                 return null;
 
@@ -204,7 +225,7 @@ namespace DrxFaker
         static List<int> GenerateDepartments(int count, List<int> businessUnitIds)
         {
             var tableName = "sungero_core_recipient";
-            int maxId = GetMaxId(tableName);
+            int maxId = GetNextId(tableName);
             if (maxId == 0)
                 return null;
 
@@ -239,7 +260,7 @@ namespace DrxFaker
         static void GenerateEmployees(int count, List<Person> persons, List<int> loginsIds, List<int> departmentsIds)
         {
             var tableName = "sungero_core_recipient";
-            int maxId = GetMaxId(tableName);
+            int maxId = GetNextId(tableName);
             if (maxId == 0)
                 return;
 
@@ -250,16 +271,18 @@ namespace DrxFaker
             .RuleFor(u => u.DepartmentId, (f, u) => f.PickRandom(departmentsIds));
 
             var query = $"INSERT INTO {tableName}" +
-                "(Id, sid, discriminator, status, name, person_company_sungero, login, department_company_sungero, persnumber_company_sungero, email_company_sungero)" +
+                "(Id, sid, discriminator, status, name, person_company_sungero, login, department_company_sungero, persnumber_company_sungero, " +
+                "email_company_sungero, neednotifyexpi_company_sungero, neednotifynewa_company_sungero)" +
                 "VALUES ";
 
             var employees = newEmployee.Generate(count).ToList();
+            var falseType = sqlType == sqlTypes.Postgres ? "false" : "0";
 
             for (var i = 0; i < employees.Count(); i++)
             {
                 var employee = employees[i];
                 query += $"\n({employee.Id}, '{employee.Sid}', '{employee.Discriminator}', '{employee.Status}', '{persons[i].Name}', "
-                    + $"'{persons[i].Id}', '{loginsIds[i]}', '{employee.DepartmentId}', '{employee.TabNumber}', '{persons[i].Email}'),";
+                    + $"'{persons[i].Id}', '{loginsIds[i]}', '{employee.DepartmentId}', '{employee.TabNumber}', '{persons[i].Email}', {falseType}, {falseType}),";
             }
 
             query = query.Substring(0, query.Length - 1);
@@ -272,37 +295,78 @@ namespace DrxFaker
         #endregion
 
         #region Полезный функционал
-        static int GetMaxId(string TableName)
+        /// <summary>
+        /// Получить следующий id для указанной таблицы
+        /// </summary>
+        /// <param name="TableName">Название таблицы</param>
+        /// <returns>Следующий id</returns>
+        static int GetNextId(string TableName)
         {
             int maxId = 0;
-            using (var connection = new NpgsqlConnection(connectionString))
+            if (sqlType == sqlTypes.Postgres)
             {
-                var command = new NpgsqlCommand($"select Max(Id) from {TableName}", connection);
-                connection.Open();
-                var reader = command.ExecuteReader();
-                while (reader.Read())
+                using (var connection = new NpgsqlConnection(connectionString))
                 {
-                    if (!int.TryParse(reader[0].ToString(), out maxId))
-                        return 0;
+                    var command = new NpgsqlCommand($"select Max(Id) from {TableName}", connection);
+                    connection.Open();
+                    var reader = command.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        if (!int.TryParse(reader[0].ToString(), out maxId))
+                            return 0;
+                    }
+                    connection.Close();
                 }
-                connection.Close();
+            }
+            else
+            {
+                using (var connection = new SqlConnection(connectionString))
+                {
+                    var command = new SqlCommand($"select Max(Id) from {TableName}", connection);
+                    connection.Open();
+                    var reader = command.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        if (!int.TryParse(reader[0].ToString(), out maxId))
+                            return 0;
+                    }
+                    connection.Close();
+                }
             }
 
             return maxId + 1;
         }
 
+        /// <summary>
+        /// Вставка данных
+        /// </summary>
+        /// <param name="query">Строка запроса</param>
+        /// <returns>True - при успешном выполнении комманды, иначе false</returns>
         static bool InsertData(string query)
         {
             var result = false;
 
             try
             {
-                using (var connection = new NpgsqlConnection(connectionString))
+                if (sqlType == sqlTypes.Postgres)
                 {
-                    var command = new NpgsqlCommand(query, connection);
-                    connection.Open();
-                    command.ExecuteNonQuery();
-                    connection.Close();
+                    using (var connection = new NpgsqlConnection(connectionString))
+                    {
+                        var command = new NpgsqlCommand(query, connection);
+                        connection.Open();
+                        command.ExecuteNonQuery();
+                        connection.Close();
+                    }
+                }
+                else
+                {
+                    using (var connection = new SqlConnection(connectionString))
+                    {
+                        var command = new SqlCommand(query, connection);
+                        connection.Open();
+                        command.ExecuteNonQuery();
+                        connection.Close();
+                    }
                 }
 
                 result = true;
