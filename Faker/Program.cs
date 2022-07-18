@@ -15,7 +15,7 @@ namespace DrxFaker
     {
         //postgresConnStr "Server=192.168.3.237;Port=5432;Database=directum;Uid=directum;Pwd=1Qwerty"
         //msConnStr "Server=192.168.1.82;Initial Catalog=S_NESTLE_RX3523_Dev_MAA;User Id=sa;Password=1Qwerty"
-        //-t p -s "192.168.3.237" -d directum -u directum -p 1Qwerty --emp 1000 --bus 4 --dep 60
+        //-t p -s "192.168.3.237" -d directum -u directum -p 1Qwerty --emp 10000 --bus 3 --dep 60
 
         static string connectionString;
         enum sqlTypes { Postgres, MS };
@@ -67,22 +67,11 @@ namespace DrxFaker
                 $"Server={opts.Server};Port={opts.Port};Database={opts.Database};Uid={opts.UserId};Pwd={opts.Password}" :
                 $"Server={opts.Server};Initial Catalog={opts.Database};User Id={opts.UserId};Password={opts.Password}";
 
+            var stopWatch = new Stopwatch();
+            stopWatch.Start();
             try
             {
-                var persons = GeneratePersons(opts.EmployeesCount);
-                if (persons == null)
-                {
-                    Console.WriteLine("Error while creating Persons");
-                    return;
-                }
-
-                var loginsIds = GenerateLogins(opts.EmployeesCount, persons);
-                if (loginsIds == null)
-                {
-                    Console.WriteLine("Error while creating Logins");
-                    return;
-                }
-
+                Console.WriteLine("Creation business units");
                 var businesUnitsIds = GenerateBusinessUnits(opts.BusinessCount);
                 if (businesUnitsIds == null)
                 {
@@ -90,6 +79,7 @@ namespace DrxFaker
                     return;
                 }
 
+                Console.WriteLine("Creation departments");
                 var departmentsIds = GenerateDepartments(opts.DepartmentsCount, businesUnitsIds);
                 if (departmentsIds == null)
                 {
@@ -97,12 +87,34 @@ namespace DrxFaker
                     return;
                 }
 
+                Console.WriteLine("Creation persons");
+                var persons = GeneratePersons(opts.EmployeesCount);
+                if (persons == null)
+                {
+                    Console.WriteLine("Error while creating Persons");
+                    return;
+                }
+
+                Console.WriteLine("Creation logins");
+                var loginsIds = GenerateLogins(opts.EmployeesCount, persons);
+                if (loginsIds == null)
+                {
+                    Console.WriteLine("Error while creating Logins");
+                    return;
+                }
+
+                Console.WriteLine("Creation employees");
                 GenerateEmployees(opts.EmployeesCount, persons, loginsIds, departmentsIds);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"\nError: {ex.Message}");
             }
+            stopWatch.Stop();
+            var ts = stopWatch.Elapsed;
+            var elapsedTime = String.Format("{0:00}:{1:00}:{2:00}.{3:00}",
+                ts.Hours, ts.Minutes, ts.Seconds, ts.Milliseconds / 10);
+            Console.WriteLine("RunTime " + elapsedTime);
         }
 
         #region Создание записей
@@ -132,12 +144,12 @@ namespace DrxFaker
             "(Id, discriminator, status, name, phones, code, lastname, firstname, dateofbirth, sex, shortname)" +
             "VALUES ";
 
-            var persons = newPersons.Generate(count);
-
-            foreach (var person in persons)
+            var persons = new List<Person>();
+            foreach (var person in newPersons.Generate(count))
             {
                 query += $"\n({person.Id}, '{person.Discriminator}', '{person.Status}', '{person.Name}', '{person.Phone}', "
                     + $"'{person.Code}', '{person.Lastname}', '{person.Firstname}', '{person.Dateofbirth}', '{person.Sex}', '{person.Shortname}'),";
+                persons.Add(person);
             }
 
             query = query.Substring(0, query.Length - 1);
@@ -164,12 +176,12 @@ namespace DrxFaker
             "(Id, discriminator, status, typeauthentication, loginname)" +
             "VALUES ";
 
-            var logins = newLogin.Generate(count);
-
-            for (var i = 0; i < logins.Count(); i++)
+            var loginsIds = new List<int>();
+            for (var i = 0; i < count; i++)
             {
-                var login = logins[i];
+                var login = newLogin.Generate();
                 query += $"\n({login.Id}, '{login.Discriminator}', '{login.Status}', '{login.TypeAuthentication}', '{persons[i].Login}'),";
+                loginsIds.Add(login.Id);
             }
 
             query = query.Substring(0, query.Length - 1);
@@ -179,7 +191,7 @@ namespace DrxFaker
             else
                 return null;
 
-            return logins.Select(_ => _.Id).ToList();
+            return loginsIds;
         }
 
         static List<int> GenerateBusinessUnits(int count)
@@ -205,12 +217,14 @@ namespace DrxFaker
                 + "tin_company_sungero, trrc_company_sungero, psrn_company_sungero)" +
                 "VALUES ";
 
-            var businessUnits = newBusinessUnit.Generate(count);
-
-            foreach (var businessUnit in businessUnits)
+            var businessUnitsIds = new List<int>();
+            foreach (var businessUnit in newBusinessUnit.GenerateLazy(count))
+            {
                 query += $"\n({businessUnit.Id}, '{businessUnit.Sid}', '{businessUnit.Discriminator}', '{businessUnit.Status}', '{businessUnit.Name}', "
                     + $"'{businessUnit.LegalName}', '{businessUnit.Code}', '{businessUnit.Phone}', '{businessUnit.TIN}', "
                     + $"'{businessUnit.TRRC}', '{businessUnit.PSRN}'),";
+                businessUnitsIds.Add(businessUnit.Id);
+            }
 
             query = query.Substring(0, query.Length - 1);
 
@@ -219,7 +233,7 @@ namespace DrxFaker
             else
                 return null;
 
-            return businessUnits.Select(_ => _.Id).ToList();
+            return businessUnitsIds;
         }
 
         static List<int> GenerateDepartments(int count, List<int> businessUnitIds)
@@ -241,11 +255,13 @@ namespace DrxFaker
                 "(Id, sid, discriminator, status, name, code_company_sungero, phone_company_sungero, businessunit_company_sungero)" +
                 "VALUES ";
 
-            var departments = newDepartment.Generate(count);
-
-            foreach (var department in departments)
+            var departmentsIds = new List<int>();
+            foreach (var department in newDepartment.GenerateLazy(count))
+            {
                 query += $"\n({department.Id}, '{department.Sid}', '{department.Discriminator}', '{department.Status}', '{department.Name}', "
                     + $"'{department.Code}', '{department.Phone}', '{department.BusinessUnitId}'),";
+                departmentsIds.Add(department.Id);
+            }
 
             query = query.Substring(0, query.Length - 1);
 
@@ -254,7 +270,7 @@ namespace DrxFaker
             else
                 return null;
 
-            return departments.Select(_ => _.Id).ToList();
+            return departmentsIds;
         }
 
         static void GenerateEmployees(int count, List<Person> persons, List<int> loginsIds, List<int> departmentsIds)
@@ -275,12 +291,10 @@ namespace DrxFaker
                 "email_company_sungero, neednotifyexpi_company_sungero, neednotifynewa_company_sungero)" +
                 "VALUES ";
 
-            var employees = newEmployee.Generate(count).ToList();
             var falseType = sqlType == sqlTypes.Postgres ? "false" : "0";
-
-            for (var i = 0; i < employees.Count(); i++)
+            for (var i = 0; i < count; i++)
             {
-                var employee = employees[i];
+                var employee = newEmployee.Generate();
                 query += $"\n({employee.Id}, '{employee.Sid}', '{employee.Discriminator}', '{employee.Status}', '{persons[i].Name}', "
                     + $"'{persons[i].Id}', '{loginsIds[i]}', '{employee.DepartmentId}', '{employee.TabNumber}', '{persons[i].Email}', {falseType}, {falseType}),";
             }
@@ -344,8 +358,6 @@ namespace DrxFaker
         /// <returns>True - при успешном выполнении комманды, иначе false</returns>
         static bool InsertData(string query)
         {
-            var result = false;
-
             try
             {
                 if (sqlType == sqlTypes.Postgres)
@@ -369,15 +381,13 @@ namespace DrxFaker
                     }
                 }
 
-                result = true;
+                return true;
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex);
-                result = false;
+                return false;
             }
-
-            return result;
         }
         #endregion
     }

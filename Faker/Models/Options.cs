@@ -19,12 +19,11 @@ namespace DrxFaker
         [Option('d', "database", Required = true, HelpText = "Name of database.")]
         public string Database { get; set; }
 
-        [Option('u', "user", Required = true, HelpText = "User login.")]
+        [Option('u', "user", Required = true, HelpText = "Database user login.")]
         public string UserId { get; set; }
 
-        [Option('p', "password", Required = true, HelpText = "User password.")]
+        [Option('p', "password", Required = true, HelpText = "Database user password.")]
         public string Password { get; set; }
-
 
         [Option("emp", Required = true, HelpText = "Count of generated employees.")]
         public int EmployeesCount { get; set; }
