@@ -16,6 +16,7 @@ namespace DrxFaker
         //postgresConnStr "Server=192.168.3.237;Port=5432;Database=directum;Uid=directum;Pwd=1Qwerty"
         //msConnStr "Server=192.168.1.82;Initial Catalog=S_NESTLE_RX3523_Dev_MAA;User Id=sa;Password=1Qwerty"
         //-t p -s "192.168.3.237" -d directum -u directum -p 1Qwerty --emp 100 --bus 1 --dep 2
+        //-t m -s "192.168.1.82" -d S_NESTLE_RX3523_Dev_MAA -u sa -p 1Qwerty --emp 100 --bus 1 --dep 2
 
         static string connectionString;
         enum sqlTypes { Postgres, MS };
@@ -25,15 +26,22 @@ namespace DrxFaker
         {
             Parser.Default.ParseArguments<Options>(new List<string>() { "--help" });
 
-            bool keepLooping = true;
-            while (keepLooping)
+            try
             {
-                var args = Console.ReadLine().Split();
-                var parser = Parser.Default.ParseArguments<Options>(args)
-                    .WithParsed(PreparationToStart);
+                bool keepLooping = true;
+                while (keepLooping)
+                {
+                    var args = Console.ReadLine().Trim().Split();
+                    var parser = Parser.Default.ParseArguments<Options>(args)
+                        .WithParsed(PreparationToStart);
 
-                if (Console.ReadKey().Key == ConsoleKey.Escape)
-                    keepLooping = false;
+                    if (Console.ReadKey().Key == ConsoleKey.Escape)
+                        keepLooping = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"\nError: {ex.Message}");
             }
         }
 
@@ -78,8 +86,7 @@ namespace DrxFaker
                     var transaction = connection.BeginTransaction();
                     command.Connection = connection;
                     command.Transaction = transaction;
-                    GenerationStart(opts.BusinessCount, opts.DepartmentsCount, opts.EmployeesCount,
-                        command, transaction);
+                    GenerationStart(opts.BusinessCount, opts.DepartmentsCount, opts.EmployeesCount, command, transaction);
                 }
             else
                 using (var connection = new SqlConnection(connectionString))
@@ -89,8 +96,7 @@ namespace DrxFaker
                     var transaction = connection.BeginTransaction();
                     command.Connection = connection;
                     command.Transaction = transaction;
-                    GenerationStart(opts.BusinessCount, opts.DepartmentsCount, opts.EmployeesCount,
-                        command, transaction);
+                    GenerationStart(opts.BusinessCount, opts.DepartmentsCount, opts.EmployeesCount, command, transaction);
                 }
 
             stopWatch.Stop();
@@ -344,6 +350,15 @@ namespace DrxFaker
             if (maxId == 0)
                 return null;
 
+            var falseType = sqlType == sqlTypes.Postgres ? "false" : "0";
+            var isNeedNotifySum = IsContainsColumn(command, tableName, "neednotifysuma_company_sungero");
+            var needNotifySumStr = isNeedNotifySum ?
+                ", neednotifysuma_company_sungero" :
+                string.Empty;
+            var needNotifySumValue = isNeedNotifySum ?
+                $", {falseType}" :
+                string.Empty;
+
             var newEmployee = new Faker<Employee>("ru")
             .RuleFor(u => u.Id, (f, u) => f.IndexFaker + maxId)
             .RuleFor(u => u.Sid, (f, u) => f.Random.Uuid().ToString())
@@ -352,16 +367,15 @@ namespace DrxFaker
 
             var query = $"INSERT INTO {tableName}" +
                 "(Id, sid, discriminator, status, name, person_company_sungero, login, department_company_sungero, persnumber_company_sungero, " +
-                "email_company_sungero, neednotifyexpi_company_sungero, neednotifynewa_company_sungero)" +
+                $"email_company_sungero, neednotifyexpi_company_sungero, neednotifynewa_company_sungero{needNotifySumStr})" +
                 "VALUES ";
 
             var employees = new List<Employee>();
-            var falseType = sqlType == sqlTypes.Postgres ? "false" : "0";
             for (var i = 0; i < count; i++)
             {
                 var employee = newEmployee.Generate();
                 query += $"\n({employee.Id}, '{employee.Sid}', '{employee.Discriminator}', '{employee.Status}', '{persons[i].Name}', "
-                    + $"'{persons[i].Id}', '{loginsIds[i]}', '{employee.DepartmentId}', '{employee.TabNumber}', '{persons[i].Email}', {falseType}, {falseType}),";
+                    + $"'{persons[i].Id}', '{loginsIds[i]}', '{employee.DepartmentId}', '{employee.TabNumber}', '{persons[i].Email}', {falseType}, {falseType}{needNotifySumValue}),";
                 employees.Add(employee);
             }
 
@@ -387,7 +401,7 @@ namespace DrxFaker
             var query = $"INSERT INTO {tableName}" +
                 "(id, recipient, member, discriminator)" +
                 "VALUES ";
-            
+
             for (var i = 0; i < employees.Count; i++)
             {
                 query += $"\n({maxId + i}, '{employees[i].DepartmentId}', '{employees[i].Id}', 'a9e935d5-3b72-4e3a-9e43-711d8f32b84e'),";
@@ -501,6 +515,46 @@ namespace DrxFaker
                 }
 
                 return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Проверка на наличие столбца в таблице
+        /// </summary>
+        /// <param name="command">SQL команда</param>
+        /// <param name="tablename">Название таблицы</param>
+        /// <param name="column">Название столбца</param>
+        /// <returns>True - при наличии столбца, иначе false</returns>
+        static bool IsContainsColumn(object command, string tablename, string column)
+        {
+            var query = "SELECT column_name FROM information_schema.columns " +
+                $"WHERE table_name = '{tablename}' AND column_name = '{column}'";
+            try
+            {
+                var isHasColumn = false;
+                if (sqlType == sqlTypes.Postgres)
+                {
+                    var postgresCommand = command as NpgsqlCommand;
+                    postgresCommand.CommandText = query;
+                    var reader = postgresCommand.ExecuteReader();
+                    isHasColumn = reader.HasRows;
+                    reader.Close();
+                }
+                else
+                {
+                    var sqlCommand = command as SqlCommand;
+                    sqlCommand.CommandText = query;
+                    var reader = sqlCommand.ExecuteReader();
+                    isHasColumn = reader.HasRows;
+                    reader.Close();
+                }
+
+                return isHasColumn;
             }
             catch (Exception ex)
             {
