@@ -16,7 +16,7 @@ namespace DrxFaker
         //postgresConnStr "Server=192.168.3.237;Port=5432;Database=directum;Uid=directum;Pwd=1Qwerty"
         //msConnStr "Server=192.168.1.82;Initial Catalog=S_NESTLE_RX3523_Dev_MAA;User Id=sa;Password=1Qwerty"
         //-t p -d directum -u directum -p 1Qwerty --emp 10000 --bus 2 --dep 10
-        //-t m -s "192.168.1.82" -d S_NESTLE_RX3523_Dev_MAA -u sa -p 1Qwerty --emp 10000 --bus 2 --dep 10
+        //-t m -s "192.168.1.82" -d S_NESTLE_RX3523_Dev_MAA -u sa -p 1Qwerty --emp 1000 --bus 2 --dep 10
 
         static string connectionString;
         enum sqlTypes { Postgres, MS };
@@ -28,15 +28,11 @@ namespace DrxFaker
 
             try
             {
-                bool keepLooping = true;
-                while (keepLooping)
+                while (true)
                 {
                     var args = Console.ReadLine().Trim().Split();
                     var parser = Parser.Default.ParseArguments<Options>(args)
                         .WithParsed(PreparationToStart);
-
-                    if (Console.ReadKey().Key == ConsoleKey.Escape)
-                        keepLooping = false;
                 }
             }
             catch (Exception ex)
@@ -103,7 +99,7 @@ namespace DrxFaker
             var ts = stopWatch.Elapsed;
             var elapsedTime = String.Format("{0:00}:{1:00}:{2:00}.{3:00}",
                 ts.Hours, ts.Minutes, ts.Seconds, ts.Milliseconds / 10);
-            Console.WriteLine("\nRunTime " + elapsedTime);
+            Console.WriteLine($"\nRunTime {elapsedTime}\n");
         }
 
         /// <summary>
@@ -116,14 +112,14 @@ namespace DrxFaker
         {
             try
             {
-                Console.WriteLine("\nCreation business units");
+                Console.WriteLine("\n\tCreation business units");
                 var businesUnitsIds = GenerateBusinessUnits(businessCount, command);
                 if (businesUnitsIds == null)
                 {
                     throw new Exception("Error while creating Business Units");
                 }
 
-                Console.WriteLine("Creation departments");
+                Console.WriteLine("\tCreation departments");
                 var departmentsIds = GenerateDepartments(departmentsCount, businesUnitsIds, command);
                 if (departmentsIds == null)
                 {
@@ -131,7 +127,7 @@ namespace DrxFaker
                 }
 
                 var loops = employeesCount / 1000;
-                for (var i = 0; i < loops + 1; i++)
+                for (var i = 0; i <= loops; i++)
                 {
                     int count;
                     if (employeesCount < 1000)
@@ -141,28 +137,31 @@ namespace DrxFaker
                     else
                         count = 1000;
 
-                    Console.WriteLine("Creation persons");
+                    if (count == 0)
+                        continue;
+
+                    Console.WriteLine("\tCreation persons");
                     var persons = GeneratePersons(count, command);
                     if (persons == null)
                     {
                         throw new Exception("Error while creating Persons");
                     }
 
-                    Console.WriteLine("Creation logins");
+                    Console.WriteLine("\tCreation logins");
                     var loginsIds = GenerateLogins(count, persons, command);
                     if (loginsIds == null)
                     {
                         throw new Exception("Error while creating Logins");
                     }
 
-                    Console.WriteLine("Creation employees");
+                    Console.WriteLine("\tCreation employees");
                     var employees = GenerateEmployees(count, persons, loginsIds, departmentsIds, command);
                     if (loginsIds == null)
                     {
                         throw new Exception("Error while creating employees");
                     }
 
-                    Console.WriteLine("Creation recipient links");
+                    Console.WriteLine("\tCreation recipient links");
                     GenerateRecipienLlink(employees, command);
                 }
 
