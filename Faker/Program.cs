@@ -15,8 +15,8 @@ namespace DrxFaker
     {
         //postgresConnStr "Server=192.168.3.237;Port=5432;Database=directum;Uid=directum;Pwd=1Qwerty"
         //msConnStr "Server=192.168.1.82;Initial Catalog=S_NESTLE_RX3523_Dev_MAA;User Id=sa;Password=1Qwerty"
-        //-t p -s "192.168.3.237" -d directum -u directum -p 1Qwerty --emp 100 --bus 1 --dep 2
-        //-t m -s "192.168.1.82" -d S_NESTLE_RX3523_Dev_MAA -u sa -p 1Qwerty --emp 100 --bus 1 --dep 2
+        //-t p -d directum -u directum -p 1Qwerty --emp 10000 --bus 2 --dep 10
+        //-t m -s "192.168.1.82" -d S_NESTLE_RX3523_Dev_MAA -u sa -p 1Qwerty --emp 10000 --bus 2 --dep 10
 
         static string connectionString;
         enum sqlTypes { Postgres, MS };
@@ -130,29 +130,41 @@ namespace DrxFaker
                     throw new Exception("Error while creating Departments");
                 }
 
-                Console.WriteLine("Creation persons");
-                var persons = GeneratePersons(employeesCount, command);
-                if (persons == null)
+                var loops = employeesCount / 1000;
+                for (var i = 0; i < loops + 1; i++)
                 {
-                    throw new Exception("Error while creating Persons");
-                }
+                    int count;
+                    if (employeesCount < 1000)
+                        count = employeesCount;
+                    else if (employeesCount - 1000 * i < 1000)
+                        count =  employeesCount - 1000 * i;
+                    else
+                        count = 1000;
 
-                Console.WriteLine("Creation logins");
-                var loginsIds = GenerateLogins(employeesCount, persons, command);
-                if (loginsIds == null)
-                {
-                    throw new Exception("Error while creating Logins");
-                }
+                    Console.WriteLine("Creation persons");
+                    var persons = GeneratePersons(count, command);
+                    if (persons == null)
+                    {
+                        throw new Exception("Error while creating Persons");
+                    }
 
-                Console.WriteLine("Creation employees");
-                var employees = GenerateEmployees(employeesCount, persons, loginsIds, departmentsIds, command);
-                if (loginsIds == null)
-                {
-                    throw new Exception("Error while creating employees");
-                }
+                    Console.WriteLine("Creation logins");
+                    var loginsIds = GenerateLogins(count, persons, command);
+                    if (loginsIds == null)
+                    {
+                        throw new Exception("Error while creating Logins");
+                    }
 
-                Console.WriteLine("Creation recipien links");
-                GenerateRecipienLlink(employees, command);
+                    Console.WriteLine("Creation employees");
+                    var employees = GenerateEmployees(count, persons, loginsIds, departmentsIds, command);
+                    if (loginsIds == null)
+                    {
+                        throw new Exception("Error while creating employees");
+                    }
+
+                    Console.WriteLine("Creation recipient links");
+                    GenerateRecipienLlink(employees, command);
+                }
 
                 if (sqlType == sqlTypes.Postgres)
                     (transaction as NpgsqlTransaction).Commit();
@@ -204,7 +216,7 @@ namespace DrxFaker
                 "VALUES ";
 
             var businessUnitsIds = new List<int>();
-            foreach (var businessUnit in newBusinessUnit.GenerateLazy(count))
+            foreach (var businessUnit in newBusinessUnit.Generate(count))
             {
                 query += $"\n({businessUnit.Id}, '{businessUnit.Sid}', '{businessUnit.Discriminator}', '{businessUnit.Status}', '{businessUnit.Name}', "
                     + $"'{businessUnit.LegalName}', '{businessUnit.Code}', '{businessUnit.Phone}', '{businessUnit.TIN}', "
@@ -235,7 +247,7 @@ namespace DrxFaker
             .RuleFor(u => u.Id, (f, u) => f.IndexFaker + maxId)
             .RuleFor(u => u.Sid, (f, u) => f.Random.Uuid().ToString())
             .RuleFor(u => u.Name, (f, u) => f.Commerce.Department())
-            .RuleFor(u => u.Code, (f, u) => f.Random.Number(10, 100000))
+            .RuleFor(u => u.Code, (f, u) => f.Random.Number(1000, 100000))
             .RuleFor(u => u.Phone, (f, u) => "+7" + f.Phone.PhoneNumber().ToString())
             .RuleFor(u => u.BusinessUnitId, (f, u) => f.PickRandom(businessUnitIds));
 
@@ -244,9 +256,9 @@ namespace DrxFaker
                 "VALUES ";
 
             var departmentsIds = new List<int>();
-            foreach (var department in newDepartment.GenerateLazy(count))
+            foreach (var department in newDepartment.Generate(count))
             {
-                query += $"\n({department.Id}, '{department.Sid}', '{department.Discriminator}', '{department.Status}', '{department.Name}', "
+                query += $"\n({department.Id}, '{department.Sid}', '{department.Discriminator}', '{department.Status}', '{department.Name} ({department.Code})', "
                     + $"'{department.Code}', '{department.Phone}', '{department.BusinessUnitId}'),";
                 departmentsIds.Add(department.Id);
             }
