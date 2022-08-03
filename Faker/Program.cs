@@ -15,7 +15,7 @@ namespace DrxFaker
     {
         //postgresConnStr "Server=192.168.3.237;Port=5432;Database=directum;Uid=directum;Pwd=1Qwerty"
         //msConnStr "Server=192.168.1.82;Initial Catalog=S_NESTLE_RX3523_Dev_MAA;User Id=sa;Password=1Qwerty"
-        //-t p -d directum -u directum -p 1Qwerty --emp 10000 --bus 2 --dep 10
+        //-t p -d directum -u directum -p 1Qwerty --emp 5000 --bus 2 --dep 10
         //-t m -s "192.168.1.82" -d S_NESTLE_RX3523_Dev_MAA -u sa -p 1Qwerty --emp 1000 --bus 2 --dep 10
 
         static string connectionString;
@@ -137,7 +137,7 @@ namespace DrxFaker
                     else
                         count = 1000;
 
-                    if (count == 0)
+                    if (count <= 0)
                         continue;
 
                     Console.WriteLine("\tCreation persons");
@@ -162,7 +162,7 @@ namespace DrxFaker
                     }
 
                     Console.WriteLine("\tCreation recipient links");
-                    GenerateRecipienLlink(employees, command);
+                    GenerateRecipientLink(employees, command);
                 }
 
                 if (sqlType == sqlTypes.Postgres)
@@ -195,15 +195,24 @@ namespace DrxFaker
         {
             var tableName = "sungero_core_recipient";
             int maxId = GetNextId(tableName, command);
-            if (maxId == 0)
+            if (maxId < 0)
                 return null;
+
+            var falseType = sqlType == sqlTypes.Postgres ? "false" : "0";
+            var isNeedNonresident = IsContainsColumn(command, tableName, "nonresident_company_sungero");
+            var needNonresidentStr = isNeedNonresident ?
+                ", nonresident_company_sungero" :
+                string.Empty;
+            var needNonresidentValue = isNeedNonresident ?
+                $", {falseType}" :
+                string.Empty;
 
             var newBusinessUnit = new Faker<BusinessUnit>("ru")
             .RuleFor(u => u.Id, (f, u) => f.IndexFaker + maxId)
             .RuleFor(u => u.Sid, (f, u) => f.Random.Uuid().ToString())
-            .RuleFor(u => u.Name, (f, u) => f.Company.CompanyName())
+            .RuleFor(u => u.Name, (f, u) => $"ООО \"{f.Company.CompanyName()}\"")
             .RuleFor(u => u.LegalName, (f, u) => u.Name)
-            .RuleFor(u => u.Code, (f, u) => f.Random.Number(10, 100000))
+            .RuleFor(u => u.Code, (f, u) => f.Random.Number(1000, 100000))
             .RuleFor(u => u.Phone, (f, u) => "+7" + f.Phone.PhoneNumber().ToString())
             .RuleFor(u => u.TIN, (f, u) => f.Random.Number(10, 100000).ToString())
             .RuleFor(u => u.TRRC, (f, u) => f.Random.Number(10, 100000).ToString())
@@ -211,7 +220,7 @@ namespace DrxFaker
 
             var query = $"INSERT INTO {tableName}" +
                 "(Id, sid, discriminator, status, name, legalname_company_sungero, code_company_sungero, phone_company_sungero, "
-                + "tin_company_sungero, trrc_company_sungero, psrn_company_sungero)" +
+                + $"tin_company_sungero, trrc_company_sungero, psrn_company_sungero{needNonresidentStr})" +
                 "VALUES ";
 
             var businessUnitsIds = new List<int>();
@@ -219,7 +228,7 @@ namespace DrxFaker
             {
                 query += $"\n({businessUnit.Id}, '{businessUnit.Sid}', '{businessUnit.Discriminator}', '{businessUnit.Status}', '{businessUnit.Name}', "
                     + $"'{businessUnit.LegalName}', '{businessUnit.Code}', '{businessUnit.Phone}', '{businessUnit.TIN}', "
-                    + $"'{businessUnit.TRRC}', '{businessUnit.PSRN}'),";
+                    + $"'{businessUnit.TRRC}', '{businessUnit.PSRN}'{needNonresidentValue}),";
                 businessUnitsIds.Add(businessUnit.Id);
             }
 
@@ -239,7 +248,7 @@ namespace DrxFaker
         {
             var tableName = "sungero_core_recipient";
             int maxId = GetNextId(tableName, command);
-            if (maxId == 0)
+            if (maxId < 0)
                 return null;
 
             var newDepartment = new Faker<Department>("ru")
@@ -278,7 +287,7 @@ namespace DrxFaker
         {
             var tableName = "sungero_parties_counterparty";
             int maxId = GetNextId(tableName, command);
-            if (maxId == 0)
+            if (maxId < 0)
                 return null;
 
             var genders = new List<Name.Gender>() { Name.Gender.Male, Name.Gender.Female };
@@ -324,7 +333,7 @@ namespace DrxFaker
         {
             var tableName = "sungero_core_login";
             int maxId = GetNextId(tableName, command);
-            if (maxId == 0)
+            if (maxId < 0)
                 return null;
 
             var newLogin = new Faker<Login>("ru")
@@ -358,7 +367,7 @@ namespace DrxFaker
         {
             var tableName = "sungero_core_recipient";
             int maxId = GetNextId(tableName, command);
-            if (maxId == 0)
+            if (maxId < 0)
                 return null;
 
             var falseType = sqlType == sqlTypes.Postgres ? "false" : "0";
@@ -402,11 +411,11 @@ namespace DrxFaker
             return employees;
         }
 
-        static void GenerateRecipienLlink(List<Employee> employees, object command)
+        static void GenerateRecipientLink(List<Employee> employees, object command)
         {
             var tableName = "sungero_core_recipientlink";
             int maxId = GetNextId(tableName, command);
-            if (maxId == 0)
+            if (maxId < 0)
                 return;
 
             var query = $"INSERT INTO {tableName}" +
@@ -449,7 +458,7 @@ namespace DrxFaker
                 while (reader.Read())
                 {
                     if (!int.TryParse(reader[0].ToString(), out maxId))
-                        return 0;
+                        return -1;
                 }
                 reader.Close();
             }
@@ -461,7 +470,7 @@ namespace DrxFaker
                 while (reader.Read())
                 {
                     if (!int.TryParse(reader[0].ToString(), out maxId))
-                        return 0;
+                        return -1;
                 }
                 reader.Close();
             }
